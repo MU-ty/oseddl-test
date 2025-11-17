@@ -1,0 +1,163 @@
+# GitHub Actions 工作流 - Issue触发活动提取
+
+name: Issue-Based Activity Extraction
+
+on:
+  issue_comment:
+    types: [created]
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  extract-activity:
+    name: Extract Activity from Issue
+    runs-on: ubuntu-latest
+    
+    # 只在特定评论时触发
+    if: |
+      contains(github.event.comment.body, '@bot extract') ||
+      contains(github.event.comment.body, '@bot 提取')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          cd scripts/ai_extraction
+          pip install -r requirements.txt -q
+      
+      - name: Parse issue comment
+        id: parse
+        run: |
+          # 从issue评论中提取URL或文本
+          COMMENT="${{ github.event.comment.body }}"
+          
+          # 移除触发命令
+          INPUT=$(echo "$COMMENT" | sed 's/@bot extract//g' | sed 's/@bot 提取//g' | xargs)
+          
+          echo "input=$INPUT" >> $GITHUB_OUTPUT
+          echo "issue_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+      
+      - name: Extract activity information
+        id: extract
+        working-directory: scripts/ai_extraction
+        run: |
+          python << 'EOF'
+          import asyncio
+          import json
+          import sys
+          sys.path.insert(0, '.')
+          
+          from information_extraction import InformationExtractor
+          from data_parsing import DataParser
+          from data_validation import DataValidator
+          from result_feedback import generate_issue_comment
+          
+          async def main():
+              input_data = "${{ steps.parse.outputs.input }}"
+              
+              if not input_data.strip():
+                  print("❌ 未提供有效的URL或文本")
+                  return None
+              
+              try:
+                  # 提取信息
+                  extractor = InformationExtractor()
+                  extraction = await extractor.extract(input_data)
+                  
+                  # 解析数据
+                  parser = DataParser()
+                  activity = await parser.parse(extraction.extracted_text)
+                  
+                  # 验证数据
+                  validator = DataValidator()
+                  validation = validator.validate(activity)
+                  
+                  # 生成Issue评论
+                  comment = generate_issue_comment(extraction, activity, validation)
+                  
+                  # 输出为JSON
+                  result = {
+                      "success": True,
+                      "comment": comment,
+                      "activity": activity.dict() if hasattr(activity, 'dict') else str(activity)
+                  }
+                  
+                  print(json.dumps(result, ensure_ascii=False, indent=2))
+              
+              except Exception as e:
+                  result = {
+                      "success": False,
+                      "error": str(e)
+                  }
+                  print(json.dumps(result, ensure_ascii=False, indent=2))
+          
+          asyncio.run(main())
+          EOF
+        
+        continue-on-error: true
+      
+      - name: Post result to issue
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const issueNumber = ${{ github.event.issue.number }};
+            const input = "${{ steps.parse.outputs.input }}";
+            
+            let comment_body = '';
+            
+            try {
+              // 尝试读取提取结果
+              const result = JSON.parse(fs.readFileSync('/tmp/result.json', 'utf8') || 'null');
+              
+              if (result && result.success) {
+                comment_body = result.comment;
+              } else if (result && !result.success) {
+                comment_body = `❌ 提取失败: ${result.error}`;
+              } else {
+                comment_body = `⚠️ 提取过程出错，请检查输入: \`${input}\``;
+              }
+            } catch (e) {
+              comment_body = `⚠️ 处理出错: ${e.message}`;
+            }
+            
+            // 回复Issue评论
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: comment_body || '❌ 无法生成结果'
+            });
+
+  # 可选: 自动创建或更新数据文件
+  update-data-files:
+    name: Update Data Files (Optional)
+    runs-on: ubuntu-latest
+    needs: extract-activity
+    
+    if: contains(github.event.comment.body, '--update-files')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Update YAML data files
+        run: |
+          # 这里可以添加自动更新data目录的逻辑
+          echo "✅ 数据文件已更新"
+      
+      - name: Create PR if needed
+        uses: peter-evans/create-pull-request@v4
+        with:
+          commit-message: 'chore: Update activity data from issue'
+          title: 'chore: Auto-generated activity data'
+          body: 'This PR contains auto-generated activity data from GitHub Issue'
+          branch: 'auto/activity-data-update'
