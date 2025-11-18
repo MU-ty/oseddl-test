@@ -28,6 +28,12 @@ jobs:
         with:
           python-version: '3.10'
       
+      - name: Install Tesseract OCR
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -qq -y tesseract-ocr
+          tesseract --version
+      
       - name: Install dependencies
         run: |
           cd scripts/ai_extraction
