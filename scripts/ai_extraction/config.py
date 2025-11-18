@@ -14,35 +14,21 @@ class Settings(BaseSettings):
     """系统配置"""
     
     # ============ GitHub Models 配置 (推荐 - 免费) ============
-    GITHUB_TOKEN: str = os.getenv("GITHUB_TOKEN", "")
+    # 同时支持 GITHUB_TOKEN 和 GH_MODELS_TOKEN
+    GITHUB_TOKEN: str = os.getenv("GITHUB_TOKEN") or os.getenv("GH_MODELS_TOKEN", "")
     """GitHub Personal Access Token - 用于GitHub Models API (推荐)"""
     
     GITHUB_MODELS_API_BASE: str = "https://models.inference.ai.azure.com/chat/completions"
     GITHUB_MODELS_DEFAULT: str = "gpt-4o"
     
-    # 支持的GitHub免费模型
     GITHUB_MODELS_AVAILABLE: list = [
-        "gpt-4o",                    # 推荐：最强能力，速度快
-        "claude-3-5-sonnet",         # 可选：Claude能力
-        "phi-4",                     # 可选：轻量级模型
-        "llama-3.1-405b",           # 可选：开源大模型
+        "gpt-4o",                    
+        "claude-3-5-sonnet",         
+        "phi-4",                     
+        "llama-3.1-405b",           
     ]
     
-    # ============ OpenAI 配置 (可选 - 付费) ============
-    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
-    """OpenAI API密钥 (可选 - 仅在GitHub Models不可用时使用)"""
-    
-    OPENAI_MODEL: str = "gpt-4-turbo-preview"  # 或 gpt-3.5-turbo
-    OPENAI_API_BASE: str = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
-    
-    # ============ AI选择策略 ============
-    # 自动选择优先级:
-    # 1. 如果有GITHUB_TOKEN → 使用GitHub Models (推荐)
-    # 2. 如果有OPENAI_API_KEY → 使用OpenAI (备选)
-    # 3. 都没有 → 使用规则解析器 (基础)
-    
-    USE_GITHUB_MODELS: bool = bool(os.getenv("GITHUB_TOKEN", ""))  # 自动检测
-    USE_OPENAI_FALLBACK: bool = bool(os.getenv("OPENAI_API_KEY", ""))  # 自动检测
+    USE_GITHUB_MODELS: bool = bool(os.getenv("GITHUB_TOKEN") or os.getenv("GH_MODELS_TOKEN", "")) 
     
     # LLM 超参数
     LLM_TEMPERATURE: float = 0.3  # 降低温度，使输出更稳定

@@ -88,10 +88,17 @@ class GitHubModelsParser:
                         result = await response.json()
                         content = result["choices"][0]["message"]["content"]
                         return self._parse_response(content)
+                    elif response.status == 401:
+                        error_text = await response.text()
+                        logger.error(f"❌ GitHub Models 认证失败 (401)")
+                        logger.error(f"错误详情: {error_text}")
+                        logger.error(f"请检查: 1) GITHUB_TOKEN 是否已设置 2) Token 是否有效 3) Token 是否有 'models' 权限")
+                        return {"error": "认证失败，请检查 GITHUB_TOKEN 配置"}
                     else:
                         error_text = await response.text()
-                        logger.error(f"❌ GitHub Models API错误: {response.status} - {error_text}")
-                        return {}
+                        logger.error(f"❌ GitHub Models API错误: {response.status}")
+                        logger.error(f"错误详情: {error_text}")
+                        return {"error": f"API调用失败: {response.status}"}
         
         except Exception as e:
             logger.error(f"❌ 调用GitHub Models失败: {e}")
@@ -101,42 +108,73 @@ class GitHubModelsParser:
         """构建提示词"""
         
         return f"""
-你是一个开源活动信息提取专家。请根据以下提取的文本，解析活动信息并返回JSON格式的数据。
+你是一个专业的开源活动信息提取专家。请仔细分析以下文本，提取准确的活动信息。
 
 ## 输入文本：
 {extracted_text[:3000]}
 
-## 任务：
-请从上述文本中提取以下信息，并返回有效的JSON（不包含markdown代码块）：
+## 提取规则：
+
+1. **活动标题** (title):
+   - 提取官方完整名称（中文或英文）
+   - 不要添加年份后缀除非原文中有
+   - 例如: "开源之夏", "Google Summer of Code"
+
+2. **活动描述** (description):
+   - 简洁描述活动性质和目的（50-100字）
+   - 重点说明活动是什么、面向谁
+   - 避免营销性语言
+
+3. **活动分类** (category):
+   - conference: 会议、峰会、论坛
+   - competition: 竞赛、黑客松、编程比赛
+   - activity: 培训、Meetup、Workshop、社区活动
+
+4. **标签** (tags):
+   - 提取3-5个关键词
+   - 包含技术栈、领域、特点
+   - 例如: ["开源", "AI", "学生", "暑期"]
+
+5. **时间信息** (events.timeline):
+   - 提取所有重要时间节点
+   - 时间格式: YYYY-MM-DDTHH:mm:ss
+   - 如果只有日期没有时间，使用 00:00:00
+   - deadline 填写精确时间，comment 填写说明（如"报名截止"、"活动开始"）
+
+6. **地点** (place):
+   - 线上活动写"线上"
+   - 线下活动写城市名或具体地点
+   - 混合活动写"线上+线下"
+
+7. **ID生成** (id):
+   - 格式: 活动英文简称-年份
+   - 全小写，用连字符分隔
+   - 例如: "ospp-2025", "gsoc-2025"
+
+## 输出格式（纯JSON，无markdown标记）：
 
 {{
-    "title": "活动官方名称",
-    "description": "一句话描述（≤100字）",
+    "title": "活动官方完整名称",
+    "description": "简洁描述活动性质和目的",
     "category": "conference/competition/activity",
-    "tags": ["标签1", "标签2"],
+    "tags": ["标签1", "标签2", "标签3"],
     "events": [
         {{
             "year": 2025,
             "id": "activity-2025",
-            "link": "https://example.com",
+            "link": "https://活动官网",
             "timezone": "Asia/Shanghai",
-            "date": "2025年6月-9月",
-            "place": "线上或地点",
+            "date": "YYYY-MM-DD 或 时间范围描述",
+            "place": "地点",
             "timeline": [
-                {{"deadline": "2025-06-04T18:00:00", "comment": "说明"}}
+                {{"deadline": "2025-06-04T18:00:00", "comment": "报名截止"}},
+                {{"deadline": "2025-07-01T00:00:00", "comment": "活动开始"}}
             ]
         }}
     ]
 }}
 
-## 重要规则：
-- ID格式：小写字母、数字、连字符 (例如: oscp-2025)
-- 时间格式：ISO 8601 (YYYY-MM-DDTHH:mm:ss)
-- 时区：IANA标准 (如: Asia/Shanghai)
-- 描述：不超过100字符
-- 返回有效的JSON，不要包含任何markdown标记
-
-现在请直接返回JSON：
+请直接返回JSON，不要有任何其他文字或标记：
 """
     
     def _parse_response(self, response_text: str) -> dict:
