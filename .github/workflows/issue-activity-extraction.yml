@@ -49,64 +49,7 @@ jobs:
         id: extract
         working-directory: scripts/ai_extraction
         run: |
-          python << 'EOF' > /tmp/result.json
-          import asyncio
-          import json
-          import sys
-          sys.path.insert(0, '.')
-          
-          from information_extraction import InformationExtractor
-          from data_parsing import DataParser
-          from data_validation import DataValidator
-          from result_feedback import generate_issue_comment
-          
-          async def main():
-              input_data = """${{ steps.parse.outputs.input }}"""
-              
-              if not input_data.strip():
-                  result = {
-                      "success": False,
-                      "error": "❌ 未提供有效的URL或文本"
-                  }
-                  print(json.dumps(result, ensure_ascii=False, indent=2))
-                  return
-              
-              try:
-                  # 提取信息
-                  extractor = InformationExtractor()
-                  extraction = await extractor.extract(input_data)
-                  
-                  # 解析数据
-                  parser = DataParser()
-                  activity = await parser.parse(extraction.extracted_text)
-                  
-                  # 验证数据
-                  validator = DataValidator()
-                  validation = validator.validate(activity)
-                  
-                  # 生成Issue评论
-                  comment = generate_issue_comment(extraction, activity, validation)
-                  
-                  # 输出为JSON
-                  result = {
-                      "success": True,
-                      "comment": comment,
-                      "activity": activity.dict() if hasattr(activity, 'dict') else str(activity)
-                  }
-                  
-                  print(json.dumps(result, ensure_ascii=False, indent=2))
-              
-              except Exception as e:
-                  result = {
-                      "success": False,
-                      "error": str(e)
-                  }
-                  print(json.dumps(result, ensure_ascii=False, indent=2))
-          
-          asyncio.run(main())
-          EOF
-        
-        continue-on-error: true
+          python3 workflow_extract.py "${{ steps.parse.outputs.input }}" > /tmp/result.json 2>&1 || true
       
       - name: Post result to issue
         uses: actions/github-script@v7
