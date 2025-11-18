@@ -84,47 +84,68 @@ class EnhancedDataParser:
         except:
             pass
     
-    def extract_time_info(self, text: str) -> Tuple[Optional[str], List[str]]:
-        """使用正则表达式提取时间信息"""
+    def extract_time_info(self, text: str) -> Tuple[Optional[str], List[TimelineEvent]]:
+        """使用正则表达式提取时间信息，返回日期和时间线事件"""
         
-        # 匹配 "2025年11月11日 09:30-11:30"
-        patterns = [
+        # 匹配 "2025年11月11日 09:30-11:30" 这样的完整时间段
+        time_range_patterns = [
             r'(\d{4})年(\d{1,2})月(\d{1,2})日[，,\s]*(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})',
-            r'(\d{4})-(\d{1,2})-(\d{1,2})\s*(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})',
-            r'时间[：:]\s*(\d{4})年(\d{1,2})月(\d{1,2})日[，,\s]*(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})',
-            r'⏰\s*(\d{4})年(\d{1,2})月(\d{1,2})日[，,\s]*(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})',
+            r'(\d{4})-(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})',
         ]
         
         timeline = []
+        date_str = None
         
-        for pattern in patterns:
+        for pattern in time_range_patterns:
             matches = re.finditer(pattern, text)
             for match in matches:
                 try:
                     groups = match.groups()
-                    # 找到数字部分的起始位置
-                    year_idx = 0
-                    for i, g in enumerate(groups):
-                        if i < len(groups) - 6:
-                            continue
-                        year_idx = i - 6
-                        break
+                    year, month, day, h1, m1, h2, m2 = [int(g) for g in groups[:7]]
                     
-                    if len(groups) >= 8:
-                        year, month, day, h1, m1, h2, m2 = groups[-8:-1] if len(groups) > 8 else groups[:7]
-                        date_str = f"{year}-{str(month).zfill(2)}-{str(day).zfill(2)}"
-                        time_str = f"{str(h1).zfill(2)}:{str(m1).zfill(2)}-{str(h2).zfill(2)}:{str(m2).zfill(2)}"
-                        
-                        timeline.append(TimelineEvent(
-                            deadline=f"{year}-{str(month).zfill(2)}-{str(day).zfill(2)}T{str(h1).zfill(2)}:{str(m1).zfill(2)}:00Z",
-                            comment=f"时间: {time_str}"
-                        ))
-                        
-                        return date_str, timeline
-                except:
+                    date_str = f"{year}-{month:02d}-{day:02d}"
+                    
+                    # 添加开始时间点
+                    start_time = f"{year}-{month:02d}-{day:02d}T{h1:02d}:{m1:02d}:00"
+                    timeline.append(TimelineEvent(
+                        deadline=start_time,
+                        comment='活动开始'
+                    ))
+                    
+                    # 添加结束时间点
+                    end_time = f"{year}-{month:02d}-{day:02d}T{h2:02d}:{m2:02d}:00"
+                    timeline.append(TimelineEvent(
+                        deadline=end_time,
+                        comment='活动结束'
+                    ))
+                    
+                    return date_str, timeline
+                except Exception as e:
                     pass
         
-        return None, []
+        # 如果没有找到时间范围，尝试查找单个时间点
+        if not timeline:
+            single_time_patterns = [
+                r'(\d{4})年(\d{1,2})月(\d{1,2})日',
+                r'(\d{4})-(\d{1,2})-(\d{1,2})',
+                r'time[：:]\s*(\d{4})-(\d{1,2})-(\d{1,2})',
+            ]
+            
+            for pattern in single_time_patterns:
+                match = re.search(pattern, text)
+                if match:
+                    try:
+                        year, month, day = [int(g) for g in match.groups()[:3]]
+                        date_str = f"{year}-{month:02d}-{day:02d}"
+                        timeline.append(TimelineEvent(
+                            deadline=f"{date_str}T00:00:00",
+                            comment='关键日期'
+                        ))
+                        return date_str, timeline
+                    except:
+                        pass
+        
+        return date_str, timeline
     
     def extract_place_info(self, text: str) -> Optional[str]:
         """使用正则表达式提取地点信息"""
