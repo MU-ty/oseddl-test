@@ -91,6 +91,8 @@ class EnhancedDataParser:
         patterns = [
             r'(\d{4})年(\d{1,2})月(\d{1,2})日[，,\s]*(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})',
             r'(\d{4})-(\d{1,2})-(\d{1,2})\s*(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})',
+            r'时间[：:]\s*(\d{4})年(\d{1,2})月(\d{1,2})日[，,\s]*(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})',
+            r'⏰\s*(\d{4})年(\d{1,2})月(\d{1,2})日[，,\s]*(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})',
         ]
         
         timeline = []
@@ -98,17 +100,29 @@ class EnhancedDataParser:
         for pattern in patterns:
             matches = re.finditer(pattern, text)
             for match in matches:
-                if len(match.groups()) >= 8:
-                    year, month, day, h1, m1, h2, m2 = match.groups()[:7]
-                    date_str = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
-                    time_str = f"{h1.zfill(2)}:{m1.zfill(2)}-{h2.zfill(2)}:{m2.zfill(2)}"
+                try:
+                    groups = match.groups()
+                    # 找到数字部分的起始位置
+                    year_idx = 0
+                    for i, g in enumerate(groups):
+                        if i < len(groups) - 6:
+                            continue
+                        year_idx = i - 6
+                        break
                     
-                    timeline.append(TimelineEvent(
-                        deadline=f"{year}-{month.zfill(2)}-{day.zfill(2)}T{h1.zfill(2)}:{m1.zfill(2)}:00Z",
-                        comment=f"事件时间: {time_str}"
-                    ))
-                    
-                    return date_str, timeline
+                    if len(groups) >= 8:
+                        year, month, day, h1, m1, h2, m2 = groups[-8:-1] if len(groups) > 8 else groups[:7]
+                        date_str = f"{year}-{str(month).zfill(2)}-{str(day).zfill(2)}"
+                        time_str = f"{str(h1).zfill(2)}:{str(m1).zfill(2)}-{str(h2).zfill(2)}:{str(m2).zfill(2)}"
+                        
+                        timeline.append(TimelineEvent(
+                            deadline=f"{year}-{str(month).zfill(2)}-{str(day).zfill(2)}T{str(h1).zfill(2)}:{str(m1).zfill(2)}:00Z",
+                            comment=f"时间: {time_str}"
+                        ))
+                        
+                        return date_str, timeline
+                except:
+                    pass
         
         return None, []
     
