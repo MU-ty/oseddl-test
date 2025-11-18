@@ -61,6 +61,16 @@ class ParsedActivity:
             "tags": self.tags,
             "events": [e.to_dict() for e in self.events]
         }
+    
+    def to_yaml_str(self) -> str:
+        """转换为YAML格式字符串"""
+        try:
+            import yaml
+            data = self.to_dict()
+            return yaml.dump([data], allow_unicode=True, sort_keys=False, default_flow_style=False)
+        except:
+            import json
+            return json.dumps(self.to_dict(), ensure_ascii=False, indent=2)
 
 class EnhancedDataParser:
     """增强的数据解析器 - 规则 + LLM"""
