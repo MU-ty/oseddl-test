@@ -24,10 +24,10 @@ async def main():
         extraction = None
         extracted_text = None
         
-        # 如果是 URL，尝试提取
+        # 如果是 URL，尝试提取（启用 OCR）
         if input_data.startswith('http'):
             try:
-                extractor = InformationExtractor(enable_ocr=False)
+                extractor = InformationExtractor(enable_ocr=True)
                 extraction = await extractor.extract(input_data)
                 extracted_text = extraction.extracted_text
             except:

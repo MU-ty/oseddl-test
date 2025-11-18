@@ -113,11 +113,13 @@ class ImprovedWebExtractor:
             
             # 识别文字
             text = pytesseract.image_to_string(img, lang='chi_sim+eng')
-            return text
+            return text if text else ""
         
-        except ImportError:
+        except ImportError as e:
+            # pytesseract 未安装
             return ""
         except Exception as e:
+            # Tesseract 未安装或其他错误
             return ""
 
 
