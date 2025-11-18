@@ -6,8 +6,15 @@
 
 import re
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 from dataclasses import dataclass, field
+from enum import Enum
+
+class ActivityCategory(str, Enum):
+    """活动分类"""
+    CONFERENCE = "conference"
+    COMPETITION = "competition"
+    ACTIVITY = "activity"
 
 @dataclass
 class TimelineEvent:
@@ -42,7 +49,7 @@ class ActivityEvent:
 class ParsedActivity:
     title: str
     description: str
-    category: str
+    category: Union[ActivityCategory, str]
     tags: List[str] = field(default_factory=list)
     events: List[ActivityEvent] = field(default_factory=list)
     
@@ -50,7 +57,7 @@ class ParsedActivity:
         return {
             "title": self.title,
             "description": self.description,
-            "category": self.category,
+            "category": self.category.value if isinstance(self.category, ActivityCategory) else self.category,
             "tags": self.tags,
             "events": [e.to_dict() for e in self.events]
         }
@@ -167,7 +174,13 @@ class EnhancedDataParser:
         
         title = llm_result.get('title', '活动')
         description = llm_result.get('description', '')
-        category = llm_result.get('category', 'activity')
+        category_str = llm_result.get('category', 'activity')
+        
+        # 确保 category 是有效的 Enum 值
+        try:
+            category = ActivityCategory(category_str)
+        except (ValueError, KeyError):
+            category = ActivityCategory.ACTIVITY
         
         # 第 2 步：使用规则提取结构化信息
         date_str, timeline = self.extract_time_info(extracted_text)
