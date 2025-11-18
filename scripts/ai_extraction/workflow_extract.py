@@ -16,7 +16,7 @@ async def main():
             return
         
         from information_extraction import InformationExtractor
-        from data_parsing import DataParser
+        from enhanced_parser import EnhancedDataParser
         from data_validation import DataValidator
         from result_feedback import generate_issue_comment
         
@@ -28,8 +28,8 @@ async def main():
             print(json.dumps(result, ensure_ascii=False))
             return
         
-        parser = DataParser(use_github_models=True)
-        activity = await parser.parse(extraction.extracted_text)
+        parser = EnhancedDataParser()
+        activity = await parser.parse(extraction.extracted_text, source_url=input_data if input_data.startswith('http') else None)
         
         validator = DataValidator()
         validation = validator.validate(activity)
