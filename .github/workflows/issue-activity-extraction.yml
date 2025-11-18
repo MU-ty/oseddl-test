@@ -55,7 +55,7 @@ jobs:
         id: extract
         working-directory: scripts/ai_extraction
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}
         run: python3 workflow_extract.py "${{ steps.parse.outputs.input }}" > /tmp/result.json || echo '{"success":false,"error":"提取失败","comment":"❌ 提取过程出错"}' > /tmp/result.json
       
       - name: Post result to issue
@@ -109,3 +109,4 @@ jobs:
       - name: Update YAML data files
         run: |
           echo "✅ 数据文件已更新"
+
