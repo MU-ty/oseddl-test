@@ -16,37 +16,63 @@ async def main():
             return
         
         from information_extraction import InformationExtractor
-        from improved_web_extractor import extract_with_ocr
         from enhanced_parser import EnhancedDataParser
         from data_validation import DataValidator
         from result_feedback import generate_issue_comment
         
-        # 如果是 URL，先尝试用改进的提取器（支持图片 OCR）
+        # 初始化 extraction（后续会被覆盖）
+        extraction = None
         extracted_text = None
+        
+        # 如果是 URL，尝试提取
         if input_data.startswith('http'):
             try:
-                extracted_text = await extract_with_ocr(input_data)
+                extractor = InformationExtractor(enable_ocr=False)
+                extraction = await extractor.extract(input_data)
+                extracted_text = extraction.extracted_text
             except:
                 pass
         
-        # 如果改进的提取器失败或输入是文本，使用通用提取器
+        # 如果提取失败或输入是文本，使用简单提取
         if not extracted_text:
-            extractor = InformationExtractor(enable_ocr=False)
-            extraction = await extractor.extract(input_data)
-            extracted_text = extraction.extracted_text
+            extracted_text = input_data if not input_data.startswith('http') else ""
         
-        if not extracted_text:
-            result["comment"] = "❌ 无法提取内容"
+        if not extracted_text or (isinstance(extracted_text, str) and len(extracted_text.strip()) < 10):
+            result["comment"] = "❌ 无法提取足够的内容"
             print(json.dumps(result, ensure_ascii=False))
             return
         
+        # 解析活动数据
         parser = EnhancedDataParser()
         activity = await parser.parse(extracted_text, source_url=input_data if input_data.startswith('http') else None)
         
+        # 验证数据
         validator = DataValidator()
         validation = validator.validate(activity)
         
-        comment = generate_issue_comment(extraction, activity, validation) if extraction else f"✅ 活动信息提取成功\n\n标题: {activity.title}\n分类: {activity.category}\n标签: {', '.join(activity.tags)}"
+        # 生成回复
+        if extraction:
+            comment = generate_issue_comment(extraction, activity, validation)
+        else:
+            # 如果没有 extraction 对象，生成简单的回复
+            comment = f"""✅ 活动信息提取成功
+
+📌 **活动标题:** {activity.title}
+
+📂 **分类:** {activity.category}
+
+📝 **描述:** {activity.description[:200] if activity.description else '(无)'}
+
+🏷️ **标签:** {', '.join(activity.tags) if activity.tags else '(无)'}
+
+"""
+            if activity.events:
+                comment += "\n⏰ **时间安排:**\n"
+                for event in activity.events[:3]:
+                    if event.date:
+                        comment += f"- 日期: {event.date}\n"
+                    if event.place:
+                        comment += f"- 地点: {event.place}\n"
         
         result["success"] = True
         result["comment"] = comment
