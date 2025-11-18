@@ -87,22 +87,20 @@ class EnhancedDataParser:
     def extract_time_info(self, text: str) -> Tuple[Optional[str], List[TimelineEvent]]:
         """使用正则表达式提取时间信息，返回日期和时间线事件"""
         
-        # 匹配 "2025年11月11日 09:30-11:30" 这样的完整时间段
+        # 优先级 1: 完整时间段 "2025年11月11日 09:30-11:30"
         time_range_patterns = [
-            r'(\d{4})年(\d{1,2})月(\d{1,2})日[，,\s]*(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})',
-            r'(\d{4})-(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})',
+            r'(\d{4})年(\d{1,2})月(\d{1,2})日[，,\s]+(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})',
+            r'(\d{4})-(\d{1,2})-(\d{1,2})[T\s]+(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})',
         ]
         
         timeline = []
         date_str = None
         
         for pattern in time_range_patterns:
-            matches = re.finditer(pattern, text)
-            for match in matches:
+            match = re.search(pattern, text)
+            if match:
                 try:
-                    groups = match.groups()
-                    year, month, day, h1, m1, h2, m2 = [int(g) for g in groups[:7]]
-                    
+                    year, month, day, h1, m1, h2, m2 = [int(g) for g in match.groups()]
                     date_str = f"{year}-{month:02d}-{day:02d}"
                     
                     # 添加开始时间点
@@ -123,11 +121,39 @@ class EnhancedDataParser:
                 except Exception as e:
                     pass
         
-        # 如果没有找到时间范围，尝试查找单个时间点
+        # 优先级 2: 分别的开始和结束时间
+        start_pattern = r'(?:开始|start)[：:]\s*(\d{4})年(\d{1,2})月(\d{1,2})日[，,\s]+(\d{1,2}):(\d{2})'
+        end_pattern = r'(?:结束|end)[：:]\s*(\d{4})年(\d{1,2})月(\d{1,2})日[，,\s]+(\d{1,2}):(\d{2})'
+        
+        start_match = re.search(start_pattern, text)
+        end_match = re.search(end_pattern, text)
+        
+        if start_match and end_match:
+            try:
+                s_year, s_month, s_day, s_hour, s_min = [int(g) for g in start_match.groups()]
+                e_year, e_month, e_day, e_hour, e_min = [int(g) for g in end_match.groups()]
+                
+                date_str = f"{s_year}-{s_month:02d}-{s_day:02d}"
+                
+                timeline = [
+                    TimelineEvent(
+                        deadline=f"{s_year}-{s_month:02d}-{s_day:02d}T{s_hour:02d}:{s_min:02d}:00",
+                        comment='活动开始'
+                    ),
+                    TimelineEvent(
+                        deadline=f"{e_year}-{e_month:02d}-{e_day:02d}T{e_hour:02d}:{e_min:02d}:00",
+                        comment='活动结束'
+                    )
+                ]
+                return date_str, timeline
+            except:
+                pass
+        
+        # 优先级 3: 只有日期 "YYYY年MM月DD日"
         if not timeline:
             single_time_patterns = [
-                r'(\d{4})年(\d{1,2})月(\d{1,2})日',
-                r'(\d{4})-(\d{1,2})-(\d{1,2})',
+                r'(\d{4})年(\d{1,2})月(\d{1,2})日(?![0-9:])',
+                r'(\d{4})-(\d{1,2})-(\d{1,2})(?![T0-9:])',
                 r'time[：:]\s*(\d{4})-(\d{1,2})-(\d{1,2})',
             ]
             
@@ -148,23 +174,46 @@ class EnhancedDataParser:
         return date_str, timeline
     
     def extract_place_info(self, text: str) -> Optional[str]:
-        """使用正则表达式提取地点信息"""
+        """使用正则表达式提取地点信息，并清理无关信息"""
         
         patterns = [
-            r'地点[：:]\s*([^\n]+)',
-            r'地址[：:]\s*([^\n]+)',
-            r'举办地[：:]\s*([^\n]+)',
-            r'举办地点[：:]\s*([^\n]+)',
-            r'📍\s*([^\n]+)',
-            r'Location[：:]\s*([^\n]+)',
+            r'(?:地点|地址|举办地点|举办地)[：:]\s*([^\n。，；；\|]+)',
+            r'(?:Location|Place)[：:]\s*([^\n。，；；\|]+)',
+            r'📍\s*([^\n。，；；\|]+)',
         ]
         
+        place = None
         for pattern in patterns:
             match = re.search(pattern, text)
             if match:
                 place = match.group(1).strip()
-                if place and len(place) > 2:
-                    return place
+                break
+        
+        if not place:
+            return None
+        
+        # 清理无关信息
+        remove_keywords = [
+            r'推荐.*?(?=\s*[，；；]|$)',  # 推荐停车位等
+            r'[，；；]\s*(?:停车|地铁|公交|地铁线路|公交车|距离|附近|推荐|步行|开车|乘坐).*?(?=\s*[，；；]|$)',
+            r'[，；；]\s*\d+元/小时.*?(?=\s*[，；；]|$)',
+            r'[，；；]\s*\d+(?:号线|路|米).*?(?=\s*[，；；]|$)',
+            r'点击报名.*?$',
+            r'长按.*?$',
+            r'扫描.*?$',
+        ]
+        
+        for pattern in remove_keywords:
+            place = re.sub(pattern, '', place, flags=re.IGNORECASE)
+        
+        place = place.strip()
+        place = re.sub(r'[，；；]$', '', place)
+        
+        # 限制长度并验证
+        if place and len(place) > 3:
+            place = place[:80]
+            if re.search(r'[\u4e00-\u9fa5a-zA-Z]+', place):
+                return place
         
         return None
     
